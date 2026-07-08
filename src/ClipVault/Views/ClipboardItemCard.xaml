@@ -1,0 +1,173 @@
+<UserControl x:Class="ClipVault.Views.ClipboardItemCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ClipVault.Views"
+             MouseDoubleClick="Card_DoubleClick"
+             Width="250"
+             Margin="5,0">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:TagToVisibilityConverter x:Key="TagToVisibilityConverter" />
+    </UserControl.Resources>
+
+    <Border Style="{StaticResource ClipboardCard}">
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 顶部行：类型图标 + 操作按钮 -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 类型图标 + Pin 角标 -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding TypeIcon}" FontSize="18" Opacity="0.9" />
+                    <Border Width="8" Height="8"
+                            CornerRadius="4"
+                            Background="{DynamicResource PinnedBrush}"
+                            VerticalAlignment="Center"
+                            Margin="7,0,0,0"
+                            Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+
+                <!-- 操作按钮区（悬停显示） -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Opacity="0"
+                            x:Name="ActionPanel">
+
+                    <Button Style="{StaticResource CardActionButton}"
+                            Click="Pin_Click"
+                            ToolTip="置顶"
+                            Margin="0,0,4,0">
+                        <TextBlock Text="📌" FontSize="15" />
+                    </Button>
+
+                    <Button Style="{StaticResource CardActionButton}"
+                            Click="Delete_Click"
+                            ToolTip="删除">
+                        <TextBlock Text="🗑" FontSize="15" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- 中间：内容预览区（从顶部开始排列） -->
+            <StackPanel Grid.Row="1"
+                        VerticalAlignment="Top"
+                        Margin="0,8">
+
+                <!-- 文本预览（Image 为 null 时显示） -->
+                <TextBlock x:Name="PreviewTextBox"
+                           Text="{Binding PreviewText}"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="14"
+                           TextTrimming="CharacterEllipsis"
+                           TextWrapping="Wrap"
+                           MaxHeight="130"
+                           LineHeight="20">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Image}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <!-- 图片预览（Image 不为 null 时显示） -->
+                <Image x:Name="PreviewImageBox"
+                       Source="{Binding Image}"
+                       MaxHeight="220"
+                       Stretch="Uniform"
+                       HorizontalAlignment="Left"
+                       Margin="0,0,0,0">
+                    <Image.Style>
+                        <Style TargetType="Image">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Image}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Image.Style>
+                </Image>
+            </StackPanel>
+
+            <!-- 底部：时间 + 标签 -->
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Left"
+                        Margin="0,8,0,0">
+                <TextBlock Text="{Binding TimeText}"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           FontSize="11"
+                           VerticalAlignment="Center" />
+                <!-- 标签显示 -->
+                <Border Margin="7,0,0,0"
+                        Padding="7,2"
+                        CornerRadius="4"
+                        Background="{DynamicResource AccentBrush}"
+                        Opacity="0.9"
+                        Visibility="{Binding Tag, Converter={StaticResource TagToVisibilityConverter}}">
+                    <TextBlock Text="{Binding Tag}"
+                               FontSize="10"
+                               FontWeight="Medium"
+                               Foreground="White"
+                               VerticalAlignment="Center" />
+                </Border>
+            </StackPanel>
+        </Grid>
+    </Border>
+
+    <!-- 右键上下文菜单 -->
+    <UserControl.ContextMenu>
+        <ContextMenu x:Name="CardContextMenu"
+                     Opened="ContextMenu_Opened"
+                     Style="{DynamicResource DarkContextMenuStyle}">
+            <MenuItem Header="📌 置顶" Click="Menu_Pin_Click" />
+            <Separator />
+            <MenuItem x:Name="TagMenuItem" Header="🏷 分组" />
+            <Separator />
+            <MenuItem x:Name="EditMenuItem" Header="✏ 编辑" Click="Menu_Edit_Click" />
+            <Separator x:Name="EditSeparator" />
+            <MenuItem Header="🗑 删除" Click="Menu_Delete_Click" />
+        </ContextMenu>
+    </UserControl.ContextMenu>
+
+    <!-- 鼠标悬停时显示操作按钮 -->
+    <UserControl.Triggers>
+        <EventTrigger RoutedEvent="MouseEnter">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="ActionPanel"
+                                     Storyboard.TargetProperty="Opacity"
+                                     To="1" Duration="0:0:0.15" />
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+        <EventTrigger RoutedEvent="MouseLeave">
+            <BeginStoryboard>
+                <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="ActionPanel"
+                                     Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="0:0:0.15" />
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </UserControl.Triggers>
+</UserControl>
