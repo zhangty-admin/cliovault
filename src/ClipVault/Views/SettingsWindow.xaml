@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ClipVault 设置"
         Width="460"
-        Height="380"
+        Height="430"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
@@ -94,13 +94,27 @@
                       Cursor="Hand" />
         </StackPanel>
 
-        <!-- 提示文字 -->
-        <TextBlock Grid.Row="4"
-                   Text="置顶的记录不会被自动清理"
-                   Foreground="{DynamicResource SecondaryTextBrush}"
-                   FontSize="12"
-                   Margin="120,0,0,0"
-                   VerticalAlignment="Top" />
+        <!-- 清理预览 -->
+        <Border Grid.Row="4"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="12"
+                Margin="120,0,0,0"
+                VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="{Binding CleanupPreview.SummaryText}"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding CleanupPreview.DetailText}"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           FontSize="12"
+                           Margin="0,6,0,0"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
 
         <!-- 版本信息 -->
         <StackPanel Grid.Row="5" Orientation="Horizontal">

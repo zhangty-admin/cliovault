@@ -94,7 +94,7 @@ public partial class App : Application
 
             // 初始化 ViewModel
             _popupViewModel = new PopupViewModel(_clipboardStore, _clipboardMonitor);
-            _settingsViewModel = new SettingsViewModel(_settingsService);
+            _settingsViewModel = new SettingsViewModel(_settingsService, _clipboardStore);
             _settingsViewModel.HotkeyChanged += OnHotkeyChanged;
 
             // 初始化自动清理服务（启动时立即执行一次 + 每小时定时）

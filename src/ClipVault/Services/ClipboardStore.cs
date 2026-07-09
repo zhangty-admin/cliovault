@@ -253,6 +253,45 @@ public class ClipboardStore
         }
     }
 
+    public CleanupPreview PreviewCleanup(RetentionPeriod period, DateTime now)
+    {
+        lock (_lock)
+        {
+            var recycleBinCutoff = now.AddDays(-7);
+            var recycleBinExpiredCount = _recycleBin.Count(x => x.DeletedAt < recycleBinCutoff);
+
+            if (period == RetentionPeriod.Never)
+            {
+                return new CleanupPreview
+                {
+                    Period = period,
+                    Cutoff = null,
+                    ProtectedByPinCount = _items.Count(i => i.IsPinned),
+                    ProtectedByTagCount = _items.Count(i => !string.IsNullOrWhiteSpace(i.Tag)),
+                    RecycleBinExpiredCount = recycleBinExpiredCount
+                };
+            }
+
+            var cutoff = GetCutoffDate(period, now);
+            var expired = _items
+                .Where(i => !i.IsPinned
+                         && string.IsNullOrWhiteSpace(i.Tag)
+                         && i.CapturedAt < cutoff)
+                .ToList();
+
+            return new CleanupPreview
+            {
+                Period = period,
+                Cutoff = cutoff,
+                ExpiredUntaggedCount = expired.Count,
+                ProtectedByPinCount = _items.Count(i => i.IsPinned),
+                ProtectedByTagCount = _items.Count(i => !string.IsNullOrWhiteSpace(i.Tag)),
+                RecycleBinExpiredCount = recycleBinExpiredCount,
+                OldestAffectedAt = expired.Count == 0 ? null : expired.Min(i => i.CapturedAt)
+            };
+        }
+    }
+
     public bool Restore(Guid itemId)
     {
         lock (_lock)
@@ -445,5 +484,17 @@ public class ClipboardStore
             if (!removed)
                 break;
         }
+    }
+
+    private static DateTime GetCutoffDate(RetentionPeriod period, DateTime now)
+    {
+        return period switch
+        {
+            RetentionPeriod.ThreeDays => now.AddDays(-3),
+            RetentionPeriod.SevenDays => now.AddDays(-7),
+            RetentionPeriod.OneMonth => now.AddDays(-30),
+            RetentionPeriod.ThreeMonths => now.AddDays(-90),
+            _ => DateTime.MinValue
+        };
     }
 }

@@ -14,9 +14,24 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _viewModel = viewModel;
         DataContext = viewModel;
+        _viewModel.ConfirmRetentionChange += ConfirmRetentionChange;
+        Closed += SettingsWindow_Closed;
 
         // 录制模式下捕获键盘
         PreviewKeyDown += SettingsWindow_PreviewKeyDown;
+    }
+
+    private void SettingsWindow_Closed(object? sender, EventArgs e)
+    {
+        if (_viewModel != null)
+            _viewModel.ConfirmRetentionChange -= ConfirmRetentionChange;
+    }
+
+    private bool ConfirmRetentionChange(CleanupPreview preview)
+    {
+        var message = $"切换后将立即把 {preview.ExpiredUntaggedCount} 条未置顶、未分组的历史记录移入回收站。\n\n" +
+                      "置顶和分组记录不会被自动清理。是否继续？";
+        return MessageBox.Show(message, "确认自动清理设置", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
 
     private void ChangeHotkeyBtn_Click(object sender, RoutedEventArgs e)

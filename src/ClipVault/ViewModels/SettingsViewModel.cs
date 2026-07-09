@@ -8,7 +8,8 @@ namespace ClipVault.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
-    private readonly SettingsService? _settingsService;
+    private SettingsService? _settingsService;
+    private ClipboardStore? _clipboardStore;
 
     [ObservableProperty]
     private bool _autoStartEnabled;
@@ -21,6 +22,9 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private bool _isRecordingHotkey;
+
+    [ObservableProperty]
+    private CleanupPreview? _cleanupPreview;
 
     private HotkeyConfig _currentHotkey;
 
@@ -42,9 +46,27 @@ public partial class SettingsViewModel : ViewModelBase
         get => _selectedRetention;
         set
         {
-            if (SetProperty(ref _selectedRetention, value) && value != null)
+            if (value == null || Equals(_selectedRetention, value))
+                return;
+
+            var preview = BuildCleanupPreview(value.Period);
+            CleanupPreview = preview;
+
+            if (preview.HasActiveCleanup)
+            {
+                var confirmed = ConfirmRetentionChange?.Invoke(preview) ?? true;
+                if (!confirmed)
+                {
+                    OnPropertyChanged();
+                    RefreshCleanupPreview();
+                    return;
+                }
+            }
+
+            if (SetProperty(ref _selectedRetention, value))
             {
                 _settingsService?.UpdateRetentionPeriod(value.Period);
+                RefreshCleanupPreview();
             }
         }
     }
@@ -66,7 +88,18 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     public SettingsViewModel(SettingsService settingsService) : this()
     {
+        Initialize(settingsService, null);
+    }
+
+    public SettingsViewModel(SettingsService settingsService, ClipboardStore clipboardStore) : this()
+    {
+        Initialize(settingsService, clipboardStore);
+    }
+
+    private void Initialize(SettingsService settingsService, ClipboardStore? clipboardStore)
+    {
         _settingsService = settingsService;
+        _clipboardStore = clipboardStore;
 
         // 从磁盘加载当前设置
         var current = settingsService.Current.RetentionPeriod;
@@ -83,6 +116,18 @@ public partial class SettingsViewModel : ViewModelBase
             Id = 9001
         };
         HotkeyDisplay = _currentHotkey.DisplayString;
+        RefreshCleanupPreview();
+    }
+
+    public void RefreshCleanupPreview()
+    {
+        CleanupPreview = BuildCleanupPreview(SelectedRetention.Period);
+    }
+
+    private CleanupPreview BuildCleanupPreview(RetentionPeriod period)
+    {
+        return _clipboardStore?.PreviewCleanup(period, DateTime.Now)
+               ?? new CleanupPreview { Period = period };
     }
 
     partial void OnAutoStartEnabledChanged(bool value)
@@ -153,6 +198,7 @@ public partial class SettingsViewModel : ViewModelBase
     public HotkeyConfig CurrentHotkey => _currentHotkey;
 
     public event Action<HotkeyConfig>? HotkeyChanged;
+    public event Func<CleanupPreview, bool>? ConfirmRetentionChange;
 }
 
 /// <summary>
