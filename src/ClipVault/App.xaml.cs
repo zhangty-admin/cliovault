@@ -25,6 +25,7 @@ public partial class App : Application
     private HotkeyService? _hotkeyService;
     private SettingsService? _settingsService;
     private CleanupService? _cleanupService;
+    private PersistenceService? _persistenceService;
 
     // ViewModel
     private PopupViewModel? _popupViewModel;
@@ -64,6 +65,7 @@ public partial class App : Application
             MessageWindow.Log($"MessageWindow created, HWND={_messageWindow.WindowHandle}");
 
             var persistence = new PersistenceService();
+            _persistenceService = persistence;
             _settingsService = new SettingsService();
             _clipboardStore = new ClipboardStore(maxCapacity: 500, persistence);
 
@@ -94,7 +96,7 @@ public partial class App : Application
 
             // 初始化 ViewModel
             _popupViewModel = new PopupViewModel(_clipboardStore, _clipboardMonitor);
-            _settingsViewModel = new SettingsViewModel(_settingsService, _clipboardStore);
+            _settingsViewModel = new SettingsViewModel(_settingsService, _clipboardStore, _persistenceService);
             _settingsViewModel.HotkeyChanged += OnHotkeyChanged;
 
             // 初始化自动清理服务（启动时立即执行一次 + 每小时定时）
@@ -131,6 +133,14 @@ public partial class App : Application
     {
         Dispatcher.Invoke(() =>
         {
+            SmartContentClassifier.Apply(item);
+            if (_settingsService?.Current.EnableSensitiveContentFilter == true
+                && SensitiveContentFilter.ShouldSkip(item))
+            {
+                MessageWindow.Log("[SensitiveFilter] skipped clipboard item");
+                return;
+            }
+
             _clipboardStore?.Add(item);
         });
     }

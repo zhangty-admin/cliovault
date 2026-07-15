@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using ClipVault.Models;
 using ClipVault.ViewModels;
+using Microsoft.Win32;
 
 namespace ClipVault.Views;
 
@@ -15,6 +16,8 @@ public partial class SettingsWindow : Window
         _viewModel = viewModel;
         DataContext = viewModel;
         _viewModel.ConfirmRetentionChange += ConfirmRetentionChange;
+        _viewModel.RequestExportData += ExportData;
+        _viewModel.RequestImportData += ImportData;
         Closed += SettingsWindow_Closed;
 
         // 录制模式下捕获键盘
@@ -24,7 +27,11 @@ public partial class SettingsWindow : Window
     private void SettingsWindow_Closed(object? sender, EventArgs e)
     {
         if (_viewModel != null)
+        {
             _viewModel.ConfirmRetentionChange -= ConfirmRetentionChange;
+            _viewModel.RequestExportData -= ExportData;
+            _viewModel.RequestImportData -= ImportData;
+        }
     }
 
     private bool ConfirmRetentionChange(CleanupPreview preview)
@@ -33,6 +40,61 @@ public partial class SettingsWindow : Window
                       "置顶和分组记录不会被自动清理。是否继续？";
         return MessageBox.Show(message, "确认自动清理设置", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
+
+    private void ExportData()
+    {
+        if (_viewModel == null) return;
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出 ClipVault 数据",
+            Filter = "ClipVault 备份 (*.zip)|*.zip",
+            FileName = $"ClipVault-backup-{DateTime.Now:yyyyMMdd-HHmmss}.zip"
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            _viewModel.ExportData(dialog.FileName);
+            MessageBox.Show("导出完成。", "ClipVault", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导出失败：{ex.Message}", "ClipVault", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ImportData()
+    {
+        if (_viewModel == null) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入 ClipVault 数据",
+            Filter = "ClipVault 备份 (*.zip)|*.zip"
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            var summary = _viewModel.PreviewImport(dialog.FileName);
+            var message = $"备份内容：历史文件={BoolText(summary.HasHistory)}，设置={BoolText(summary.HasSettings)}，图片={summary.ImageCount} 张。\n\n" +
+                          "导入会覆盖当前本地数据，导入前会自动备份当前数据。导入后请重启 ClipVault 让数据重新加载。是否继续？";
+            if (MessageBox.Show(message, "确认导入", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                return;
+
+            _viewModel.ImportData(dialog.FileName);
+            MessageBox.Show("导入完成，请退出并重新启动 ClipVault。", "ClipVault", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"导入失败：{ex.Message}", "ClipVault", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static string BoolText(bool value) => value ? "有" : "无";
 
     private void ChangeHotkeyBtn_Click(object sender, RoutedEventArgs e)
     {

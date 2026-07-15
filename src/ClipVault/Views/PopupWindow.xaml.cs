@@ -30,6 +30,7 @@ public partial class PopupWindow : Window
     private const double CardScrollAmount = 252;
     private const double TagScrollAmount = 60;
     private const double LoadMoreThreshold = 500;
+    private const int PasteTargetReadyDelayMs = 250;
 
     private ClipboardItem? _pendingPasteItem = null;
 
@@ -220,29 +221,29 @@ public partial class PopupWindow : Window
     }
 
     /// <summary>
-    /// 双击粘贴：先隐藏窗口，再在 Dispatcher 回调中执行 复制→粘贴
-    /// 这样用户看到的是窗口瞬间消失，复制+粘贴在后台进行
+    /// 双击粘贴：先隐藏窗口并写入剪贴板，等待目标窗口恢复焦点后再粘贴。
+    /// 浏览器远程桌面还需要把本机剪贴板同步到远端，不能在写入后立即发送 Ctrl+V。
     /// </summary>
-    private void OnRequestPaste(ClipboardItem item)
+    private async void OnRequestPaste(ClipboardItem item)
     {
         _pendingPasteItem = item;
         _isPasting = true;
 
         Hide();
 
-        Dispatcher.BeginInvoke(new Action(() =>
+        try
         {
+            await Dispatcher.Yield(DispatcherPriority.Input);
+
             if (DataContext is not PopupViewModel vm || _pendingPasteItem == null)
-            {
-                _isPasting = false;
                 return;
-            }
 
             var pasteItem = _pendingPasteItem;
             _pendingPasteItem = null;
 
             if (vm.CopyToClipboardFast(pasteItem))
             {
+                await Task.Delay(PasteTargetReadyDelayMs);
                 DoPaste();
             }
             else
@@ -250,9 +251,11 @@ public partial class PopupWindow : Window
                 MessageBox.Show("写入剪贴板失败，已取消粘贴。请稍后重试。",
                     "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+        }
+        finally
+        {
             _isPasting = false;
-
-        }), DispatcherPriority.Input);
+        }
     }
 
     private void OnRequestOpenRecycleBin()
@@ -872,7 +875,7 @@ public partial class PopupWindow : Window
     private void OnRequestSetTag(ClipboardItem item)
     {
         // 使用简单输入对话框
-        string currentTag = item.Tag ?? "";
+        string currentTag = item.TagsText;
         var dialog = new TagInputDialog(item.PreviewText ?? "", currentTag)
         {
             Owner = this,

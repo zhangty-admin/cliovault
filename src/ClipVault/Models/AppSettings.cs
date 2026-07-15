@@ -53,8 +53,10 @@ public class AppSettings
     /// </summary>
     public uint HotkeyVirtualKey { get; set; } = 0x56;
 
+    public bool EnableSensitiveContentFilter { get; set; } = true;
+
     /// <summary>
     /// 设置文件版本（用于未来迁移）
     /// </summary>
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 }

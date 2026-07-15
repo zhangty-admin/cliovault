@@ -3,13 +3,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ClipVault 设置"
         Width="460"
-        Height="430"
+        Height="520"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -94,8 +96,43 @@
                       Cursor="Hand" />
         </StackPanel>
 
+        <!-- 敏感内容过滤 -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,0,0,14">
+            <TextBlock Text="敏感过滤"
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       FontSize="14"
+                       VerticalAlignment="Center"
+                       Width="120" />
+            <CheckBox IsChecked="{Binding SensitiveFilterEnabled}"
+                      Content="不保存明显密码、Token、密钥和证件卡号"
+                      Foreground="{DynamicResource SecondaryTextBrush}"
+                      FontSize="12"
+                      VerticalAlignment="Center"
+                      Cursor="Hand" />
+        </StackPanel>
+
+        <!-- 导入导出 -->
+        <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,0,0,14">
+            <TextBlock Text="数据迁移"
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       FontSize="14"
+                       VerticalAlignment="Center"
+                       Width="120" />
+            <Button Content="导出"
+                    Command="{Binding ExportDataCommand}"
+                    Width="88"
+                    Height="30"
+                    Cursor="Hand" />
+            <Button Content="导入"
+                    Command="{Binding ImportDataCommand}"
+                    Width="88"
+                    Height="30"
+                    Margin="8,0,0,0"
+                    Cursor="Hand" />
+        </StackPanel>
+
         <!-- 清理预览 -->
-        <Border Grid.Row="4"
+        <Border Grid.Row="6"
                 Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1"
@@ -117,7 +154,7 @@
         </Border>
 
         <!-- 版本信息 -->
-        <StackPanel Grid.Row="5" Orientation="Horizontal">
+        <StackPanel Grid.Row="7" Orientation="Horizontal">
             <TextBlock Text="ClipVault v1.0.0"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        FontSize="12"

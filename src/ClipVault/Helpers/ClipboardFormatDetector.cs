@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ClipVault.Models;
 
@@ -60,7 +61,7 @@ public static class ClipboardFormatDetector
                 var image = Clipboard.GetImage();
                 if (image != null)
                 {
-                    image.Freeze();
+                    image = NormalizeClipboardImage(image);
                     return new ClipboardItem
                     {
                         Type = ClipboardItemType.Image,
@@ -193,11 +194,56 @@ public static class ClipboardFormatDetector
             var image = Clipboard.GetImage();
             if (image != null)
             {
-                image.Freeze();
-                return image;
+                return NormalizeClipboardImage(image);
             }
         }
         catch { }
         return null;
+    }
+
+    /// <summary>
+    /// 将剪贴板位图转换为 WPF 可稳定渲染的 BGRA32。
+    /// 某些程序写入的 CF_DIB 会携带全 0 Alpha；RGB 数据有效，但 WPF 会将其显示为全透明。
+    /// 仅在整张图片的 Alpha 都为 0 时将其修正为不透明，正常的透明图片保持原 Alpha。
+    /// </summary>
+    internal static BitmapSource NormalizeClipboardImage(BitmapSource source)
+    {
+        BitmapSource bgraSource = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+
+        var stride = checked(bgraSource.PixelWidth * 4);
+        var pixels = new byte[checked(stride * bgraSource.PixelHeight)];
+        bgraSource.CopyPixels(pixels, stride, 0);
+
+        var hasVisiblePixel = false;
+        for (var i = 3; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] != 0)
+            {
+                hasVisiblePixel = true;
+                break;
+            }
+        }
+
+        if (!hasVisiblePixel)
+        {
+            for (var i = 3; i < pixels.Length; i += 4)
+                pixels[i] = byte.MaxValue;
+
+            MessageWindow.Log($"[ClipboardImage] repaired zero alpha: {source.PixelWidth}x{source.PixelHeight}, format={source.Format}");
+        }
+
+        var normalized = BitmapSource.Create(
+            bgraSource.PixelWidth,
+            bgraSource.PixelHeight,
+            bgraSource.DpiX > 0 ? bgraSource.DpiX : 96,
+            bgraSource.DpiY > 0 ? bgraSource.DpiY : 96,
+            PixelFormats.Bgra32,
+            null,
+            pixels,
+            stride);
+        normalized.Freeze();
+        return normalized;
     }
 }

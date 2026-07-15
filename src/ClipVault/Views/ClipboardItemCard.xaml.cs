@@ -127,12 +127,12 @@ public partial class ClipboardItemCard : UserControl
 
         TagMenuItem.Items.Clear();
 
-        // 如果当前项已有分组，显示「取消分组」
-        if (item != null && !string.IsNullOrEmpty(item.Tag))
+        // 如果当前项已有分组，显示「取消全部分组」
+        if (item != null && item.HasTags)
         {
             var removeTagItem = new MenuItem
             {
-                Header = "✕ 取消分组",
+                Header = "✕ 取消全部分组",
                 FontWeight = FontWeights.Normal,
                 Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("SecondaryTextBrush")
             };
@@ -153,19 +153,19 @@ public partial class ClipboardItemCard : UserControl
                 FontWeight = FontWeights.Normal
             };
 
-            // 当前项的分组高亮显示
-            if (DataContext is ClipboardItem ci && ci.Tag == currentTag)
+            // 当前项已绑定的分组高亮显示，点击可取消。
+            if (DataContext is ClipboardItem ci && ci.Tags.Contains(currentTag))
             {
                 tagItem.Header = "✓ " + currentTag;
                 tagItem.FontWeight = FontWeights.Bold;
             }
 
-            tagItem.Click += (_, _) => RaiseTagSet(currentTag);
+            tagItem.Click += (_, _) => ToggleTag(currentTag);
             TagMenuItem.Items.Add(tagItem);
         }
 
         // 新建分组
-        if (tags.Count > 0 || (DataContext is ClipboardItem ci2 && !string.IsNullOrEmpty(ci2.Tag)))
+        if (tags.Count > 0 || (DataContext is ClipboardItem ci2 && ci2.HasTags))
             TagMenuItem.Items.Add(new Separator());
 
         var newTagItem = new MenuItem
@@ -201,6 +201,15 @@ public partial class ClipboardItemCard : UserControl
         if (Window.GetWindow(this)?.DataContext is PopupViewModel vm)
         {
             vm.ApplyTag(item, tag);
+        }
+    }
+
+    private void ToggleTag(string tag)
+    {
+        if (DataContext is not ClipboardItem item) return;
+        if (Window.GetWindow(this)?.DataContext is PopupViewModel vm)
+        {
+            vm.ToggleTag(item, tag);
         }
     }
 

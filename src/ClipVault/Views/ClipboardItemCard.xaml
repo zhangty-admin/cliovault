@@ -32,6 +32,11 @@
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
                     <TextBlock Text="{Binding TypeIcon}" FontSize="18" Opacity="0.9" />
+                    <TextBlock Text="{Binding SmartTypeText}"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               FontSize="11"
+                               VerticalAlignment="Center"
+                               Margin="7,0,0,0" />
                     <Border Width="8" Height="8"
                             CornerRadius="4"
                             Background="{DynamicResource PinnedBrush}"
@@ -123,8 +128,8 @@
                         CornerRadius="4"
                         Background="{DynamicResource AccentBrush}"
                         Opacity="0.9"
-                        Visibility="{Binding Tag, Converter={StaticResource TagToVisibilityConverter}}">
-                    <TextBlock Text="{Binding Tag}"
+                        Visibility="{Binding TagsText, Converter={StaticResource TagToVisibilityConverter}}">
+                    <TextBlock Text="{Binding TagsText}"
                                FontSize="10"
                                FontWeight="Medium"
                                Foreground="White"

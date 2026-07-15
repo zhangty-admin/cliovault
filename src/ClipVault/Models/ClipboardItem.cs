@@ -10,8 +10,9 @@ namespace ClipVault.Models;
 public class ClipboardItem : INotifyPropertyChanged
 {
     private bool _isPinned;
-    private string? _tag;
+    private List<string> _tags = new();
     private string? _text;
+    private string? _smartType;
 
     public Guid Id { get; init; } = Guid.NewGuid();
 
@@ -38,6 +39,21 @@ public class ClipboardItem : INotifyPropertyChanged
 
     public DateTime CapturedAt { get; init; } = DateTime.Now;
 
+    public string? SmartType
+    {
+        get => _smartType;
+        set
+        {
+            if (_smartType != value)
+            {
+                _smartType = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(TypeIcon));
+                OnPropertyChanged(nameof(SmartTypeText));
+            }
+        }
+    }
+
     /// <summary>
     /// 是否置顶
     /// </summary>
@@ -55,20 +71,41 @@ public class ClipboardItem : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// 自定义分组标签（null 或空表示未分组）
+    /// 自定义分组标签（null 或空表示未分组）。保留给旧代码和旧数据兼容，返回第一个标签。
     /// </summary>
     public string? Tag
     {
-        get => _tag;
+        get => _tags.FirstOrDefault();
         set
         {
-            if (_tag != value)
-            {
-                _tag = value;
-                OnPropertyChanged();
-            }
+            Tags = string.IsNullOrWhiteSpace(value)
+                ? new List<string>()
+                : new List<string> { value.Trim() };
         }
     }
+
+    public List<string> Tags
+    {
+        get => _tags;
+        set
+        {
+            var normalized = NormalizeTags(value);
+            if (_tags.SequenceEqual(normalized))
+                return;
+
+            _tags = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Tag));
+            OnPropertyChanged(nameof(TagsText));
+            OnPropertyChanged(nameof(HasTags));
+        }
+    }
+
+    public bool HasTags => _tags.Count > 0;
+
+    public string TagsText => string.Join(" · ", _tags);
+
+    public string SmartTypeText => string.IsNullOrWhiteSpace(SmartType) ? "普通" : SmartType;
 
     /// <summary>
     /// 预览文本（用于搜索和显示）
@@ -116,6 +153,22 @@ public class ClipboardItem : INotifyPropertyChanged
     {
         get
         {
+            if (!string.IsNullOrWhiteSpace(SmartType))
+            {
+                return SmartType switch
+                {
+                    "URL" => "🔗",
+                    "Email" => "✉",
+                    "手机号" => "☎",
+                    "JSON" => "{}",
+                    "代码" => "</>",
+                    "命令" => ">_",
+                    "SQL" => "DB",
+                    "颜色" => "#",
+                    _ => "📝"
+                };
+            }
+
             return Type switch
             {
                 ClipboardItemType.Text => "📝",
@@ -154,5 +207,15 @@ public class ClipboardItem : INotifyPropertyChanged
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private static List<string> NormalizeTags(IEnumerable<string>? tags)
+    {
+        if (tags == null) return new List<string>();
+        return tags
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 }

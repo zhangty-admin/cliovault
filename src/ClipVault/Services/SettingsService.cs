@@ -81,6 +81,16 @@ public class SettingsService
         SettingsChanged?.Invoke(_current);
     }
 
+    public void UpdateSensitiveContentFilter(bool enabled)
+    {
+        if (_current.EnableSensitiveContentFilter == enabled)
+            return;
+
+        _current.EnableSensitiveContentFilter = enabled;
+        Save();
+        SettingsChanged?.Invoke(_current);
+    }
+
     /// <summary>
     /// 保存到磁盘
     /// </summary>

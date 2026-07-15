@@ -227,11 +227,11 @@ public class ClipboardStore
     {
         lock (_lock)
         {
-            var protectedByTag = _items.Count(i => !string.IsNullOrWhiteSpace(i.Tag));
+            var protectedByTag = _items.Count(i => i.HasTags);
             var protectedByPin = _items.Count(i => i.IsPinned);
             var toRemove = _items
                 .Where(i => !i.IsPinned
-                         && string.IsNullOrWhiteSpace(i.Tag)
+                         && !i.HasTags
                          && i.CapturedAt < cutoff)
                 .ToList();
 
@@ -267,7 +267,7 @@ public class ClipboardStore
                     Period = period,
                     Cutoff = null,
                     ProtectedByPinCount = _items.Count(i => i.IsPinned),
-                    ProtectedByTagCount = _items.Count(i => !string.IsNullOrWhiteSpace(i.Tag)),
+                    ProtectedByTagCount = _items.Count(i => i.HasTags),
                     RecycleBinExpiredCount = recycleBinExpiredCount
                 };
             }
@@ -275,7 +275,7 @@ public class ClipboardStore
             var cutoff = GetCutoffDate(period, now);
             var expired = _items
                 .Where(i => !i.IsPinned
-                         && string.IsNullOrWhiteSpace(i.Tag)
+                         && !i.HasTags
                          && i.CapturedAt < cutoff)
                 .ToList();
 
@@ -285,7 +285,7 @@ public class ClipboardStore
                 Cutoff = cutoff,
                 ExpiredUntaggedCount = expired.Count,
                 ProtectedByPinCount = _items.Count(i => i.IsPinned),
-                ProtectedByTagCount = _items.Count(i => !string.IsNullOrWhiteSpace(i.Tag)),
+                ProtectedByTagCount = _items.Count(i => i.HasTags),
                 RecycleBinExpiredCount = recycleBinExpiredCount,
                 OldestAffectedAt = expired.Count == 0 ? null : expired.Min(i => i.CapturedAt)
             };
@@ -355,8 +355,7 @@ public class ClipboardStore
             // 先加已有顺序的标签，再追加项目标签中不在列表的新标签
             var result = new List<string>(_standaloneTags);
             var itemTags = _items
-                .Where(x => !string.IsNullOrEmpty(x.Tag))
-                .Select(x => x.Tag!)
+                .SelectMany(x => x.Tags)
                 .Distinct();
 
             foreach (var t in itemTags)
@@ -380,7 +379,7 @@ public class ClipboardStore
         lock (_lock)
         {
             if (_standaloneTags.Contains(trimmed)) return false;
-            if (_items.Any(x => x.Tag == trimmed)) return false;
+            if (_items.Any(x => x.Tags.Contains(trimmed))) return false;
 
             _standaloneTags.Add(trimmed);
             ScheduleSave();
@@ -424,7 +423,33 @@ public class ClipboardStore
             var item = _items.FirstOrDefault(x => x.Id == itemId);
             if (item == null) return;
 
-            item.Tag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
+            item.Tags = ParseTags(tag);
+            foreach (var itemTag in item.Tags)
+            {
+                if (!_standaloneTags.Contains(itemTag) && !_items.Any(x => !ReferenceEquals(x, item) && x.Tags.Contains(itemTag)))
+                    _standaloneTags.Add(itemTag);
+            }
+            ScheduleSave();
+        }
+    }
+
+    public void ToggleTag(Guid itemId, string tag)
+    {
+        var trimmed = tag.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) return;
+
+        lock (_lock)
+        {
+            var item = _items.FirstOrDefault(x => x.Id == itemId);
+            if (item == null) return;
+
+            var tags = item.Tags.ToList();
+            if (tags.Contains(trimmed))
+                tags.Remove(trimmed);
+            else
+                tags.Add(trimmed);
+
+            item.Tags = tags;
             ScheduleSave();
         }
     }
@@ -452,9 +477,9 @@ public class ClipboardStore
         lock (_lock)
         {
             // 清除项目上的标签
-            foreach (var item in _items.Where(x => x.Tag == tag))
+            foreach (var item in _items.Where(x => x.Tags.Contains(tag)))
             {
-                item.Tag = null;
+                item.Tags = item.Tags.Where(x => x != tag).ToList();
             }
             // 清除独立标签
             _standaloneTags.Remove(tag);
@@ -470,7 +495,7 @@ public class ClipboardStore
             for (int i = _items.Count - 1; i >= 0; i--)
             {
                 // 置顶或已分组记录属于用户明确保留的数据，不参与容量淘汰。
-                if (!_items[i].IsPinned && string.IsNullOrWhiteSpace(_items[i].Tag))
+                if (!_items[i].IsPinned && !_items[i].HasTags)
                 {
                     var item = _items[i];
                     _items.RemoveAt(i);
@@ -496,5 +521,16 @@ public class ClipboardStore
             RetentionPeriod.ThreeMonths => now.AddDays(-90),
             _ => DateTime.MinValue
         };
+    }
+
+    private static List<string> ParseTags(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return new List<string>();
+        return value
+            .Split(new[] { ',', '，', ';', '；', '|', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 }

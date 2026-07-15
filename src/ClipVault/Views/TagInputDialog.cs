@@ -52,7 +52,7 @@ public class TagInputDialog : Window
         // 提示文字
         var hintBlock = new TextBlock
         {
-            Text = "输入分组名称：",
+            Text = "输入分组名称，多个用逗号分隔：",
             Foreground = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)),
             FontSize = 13,
             Margin = new Thickness(0, 0, 0, 6)

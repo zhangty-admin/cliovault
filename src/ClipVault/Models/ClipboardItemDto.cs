@@ -26,6 +26,10 @@ public class ClipboardItemDto
     /// 自定义分组标签
     /// </summary>
     public string? Tag { get; set; }
+
+    public List<string>? Tags { get; set; }
+
+    public string? SmartType { get; set; }
 }
 
 /// <summary>
@@ -33,7 +37,7 @@ public class ClipboardItemDto
 /// </summary>
 public class ClipboardHistoryData
 {
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
 
     public List<ClipboardItemDto> Items { get; set; } = new();
 

@@ -10,6 +10,7 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private SettingsService? _settingsService;
     private ClipboardStore? _clipboardStore;
+    private ImportExportService? _importExportService;
 
     [ObservableProperty]
     private bool _autoStartEnabled;
@@ -22,6 +23,9 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     private bool _isRecordingHotkey;
+
+    [ObservableProperty]
+    private bool _sensitiveFilterEnabled = true;
 
     [ObservableProperty]
     private CleanupPreview? _cleanupPreview;
@@ -88,18 +92,24 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     public SettingsViewModel(SettingsService settingsService) : this()
     {
-        Initialize(settingsService, null);
+        Initialize(settingsService, null, null);
     }
 
     public SettingsViewModel(SettingsService settingsService, ClipboardStore clipboardStore) : this()
     {
-        Initialize(settingsService, clipboardStore);
+        Initialize(settingsService, clipboardStore, null);
     }
 
-    private void Initialize(SettingsService settingsService, ClipboardStore? clipboardStore)
+    public SettingsViewModel(SettingsService settingsService, ClipboardStore clipboardStore, PersistenceService persistenceService) : this()
+    {
+        Initialize(settingsService, clipboardStore, new ImportExportService(persistenceService));
+    }
+
+    private void Initialize(SettingsService settingsService, ClipboardStore? clipboardStore, ImportExportService? importExportService)
     {
         _settingsService = settingsService;
         _clipboardStore = clipboardStore;
+        _importExportService = importExportService;
 
         // 从磁盘加载当前设置
         var current = settingsService.Current.RetentionPeriod;
@@ -116,7 +126,13 @@ public partial class SettingsViewModel : ViewModelBase
             Id = 9001
         };
         HotkeyDisplay = _currentHotkey.DisplayString;
+        SensitiveFilterEnabled = s.EnableSensitiveContentFilter;
         RefreshCleanupPreview();
+    }
+
+    partial void OnSensitiveFilterEnabledChanged(bool value)
+    {
+        _settingsService?.UpdateSensitiveContentFilter(value);
     }
 
     public void RefreshCleanupPreview()
@@ -197,8 +213,38 @@ public partial class SettingsViewModel : ViewModelBase
     /// </summary>
     public HotkeyConfig CurrentHotkey => _currentHotkey;
 
+    public void ExportData(string zipPath)
+    {
+        _clipboardStore?.Flush();
+        _importExportService?.ExportTo(zipPath);
+    }
+
+    public ImportSummary PreviewImport(string zipPath)
+    {
+        return _importExportService?.Preview(zipPath) ?? default;
+    }
+
+    public void ImportData(string zipPath)
+    {
+        _importExportService?.ImportFrom(zipPath);
+    }
+
+    [RelayCommand]
+    public void ExportData()
+    {
+        RequestExportData?.Invoke();
+    }
+
+    [RelayCommand]
+    public void ImportData()
+    {
+        RequestImportData?.Invoke();
+    }
+
     public event Action<HotkeyConfig>? HotkeyChanged;
     public event Func<CleanupPreview, bool>? ConfirmRetentionChange;
+    public event Action? RequestExportData;
+    public event Action? RequestImportData;
 }
 
 /// <summary>

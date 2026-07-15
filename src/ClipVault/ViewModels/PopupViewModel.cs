@@ -147,12 +147,14 @@ public partial class PopupViewModel : ViewModelBase
         foreach (var item in _store.Items)
         {
             // 标签过滤
-            if (activeTag != null && item.Tag != activeTag)
+            if (activeTag != null && !item.Tags.Contains(activeTag))
                 continue;
 
             // 搜索文本过滤
             if (string.IsNullOrEmpty(query) ||
-                (item.PreviewText?.ToLowerInvariant().Contains(query) ?? false))
+                (item.PreviewText?.ToLowerInvariant().Contains(query) ?? false) ||
+                item.TagsText.ToLowerInvariant().Contains(query) ||
+                item.SmartTypeText.ToLowerInvariant().Contains(query))
             {
                 desired.Add(item);
             }
@@ -372,6 +374,13 @@ public partial class PopupViewModel : ViewModelBase
     public void ApplyTag(ClipboardItem item, string? tag)
     {
         _store.SetTag(item.Id, tag);
+        RefreshTags();
+        RefreshFilteredItems();
+    }
+
+    public void ToggleTag(ClipboardItem item, string tag)
+    {
+        _store.ToggleTag(item.Id, tag);
         RefreshTags();
         RefreshFilteredItems();
     }

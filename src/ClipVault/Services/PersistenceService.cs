@@ -24,6 +24,10 @@ public class PersistenceService
     /// </summary>
     public static string ImageDirectory => ImagesDir;
 
+    public static string DataDirectory => DataDir;
+
+    public static string HistoryFilePath => HistoryFile;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = false,
@@ -165,7 +169,9 @@ public class PersistenceService
             FilePaths = item.FilePaths?.ToList(),
             CapturedAt = item.CapturedAt,
             IsPinned = item.IsPinned,
-            Tag = item.Tag
+            Tag = item.Tag,
+            Tags = item.Tags.ToList(),
+            SmartType = item.SmartType
         };
 
         // 任何类型只要有 Image 就保存为 PNG（支持 Image/Rtf/Html/Files 带图片预览）
@@ -254,7 +260,8 @@ public class PersistenceService
             FilePaths = dto.FilePaths?.ToList().AsReadOnly(),
             CapturedAt = dto.CapturedAt,
             IsPinned = dto.IsPinned,
-            Tag = dto.Tag,
+            Tags = MergeTags(dto.Tags, dto.Tag),
+            SmartType = dto.SmartType,
             Image = image
         };
 
@@ -288,6 +295,21 @@ public class PersistenceService
             Directory.CreateDirectory(DataDir);
         if (!Directory.Exists(ImagesDir))
             Directory.CreateDirectory(ImagesDir);
+    }
+
+    private static List<string> MergeTags(IEnumerable<string>? tags, string? legacyTag)
+    {
+        var result = new List<string>();
+        if (tags != null)
+            result.AddRange(tags);
+        if (!string.IsNullOrWhiteSpace(legacyTag))
+            result.Add(legacyTag);
+
+        return result
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 
     /// <summary>
