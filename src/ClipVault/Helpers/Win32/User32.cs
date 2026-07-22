@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace ClipVault.Helpers.Win32;
 
@@ -33,6 +34,15 @@ internal static class User32
 
     [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, IntPtr dwExtraInfo);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern int GetWindowTextLength(IntPtr hWnd);
 
     // ===== Win32 剪贴板（直接 API，避免 OLE 层的超时） =====
 
@@ -105,6 +115,50 @@ internal static class User32
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool BringWindowToTop(IntPtr hWnd);
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct INPUT
+{
+    public uint type;
+    public INPUTUNION data;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal struct INPUTUNION
+{
+    [FieldOffset(0)] public MOUSEINPUT mouseInput;
+    [FieldOffset(0)] public KEYBDINPUT keyboardInput;
+    [FieldOffset(0)] public HARDWAREINPUT hardwareInput;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MOUSEINPUT
+{
+    public int dx;
+    public int dy;
+    public uint mouseData;
+    public uint dwFlags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct KEYBDINPUT
+{
+    public ushort wVk;
+    public ushort wScan;
+    public uint dwFlags;
+    public uint time;
+    public UIntPtr dwExtraInfo;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct HARDWAREINPUT
+{
+    public uint uMsg;
+    public ushort wParamL;
+    public ushort wParamH;
 }
 
 /// <summary>

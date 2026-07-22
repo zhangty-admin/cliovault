@@ -16,6 +16,8 @@ internal static class Win32Constants
 
     // keybd_event 标志
     public const uint KEYEVENTF_KEYUP = 0x0002;
+    public const uint KEYEVENTF_UNICODE = 0x0004;
+    public const uint INPUT_KEYBOARD = 1;
 
     // 剪贴板格式
     public const uint CF_UNICODETEXT = 13;

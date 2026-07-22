@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,9 +31,12 @@ public partial class PopupWindow : Window
     private const double CardScrollAmount = 252;
     private const double TagScrollAmount = 60;
     private const double LoadMoreThreshold = 500;
-    private const int PasteTargetReadyDelayMs = 250;
+    private const int PasteTargetFocusDelayMs = 200;
+    private const int PasteClipboardSyncDelayMs = 300;
+    private const int JumpServerDirectInputMaxLength = 100;
 
     private ClipboardItem? _pendingPasteItem = null;
+    private string _pasteTargetWindowTitle = string.Empty;
 
     // ===== 卡片列表拖拽滑动字段 =====
     private bool _isCardDragging = false;
@@ -187,6 +191,7 @@ public partial class PopupWindow : Window
             _isPasting = false;
 
             var activeMonitor = CaptureActiveMonitor();
+            _pasteTargetWindowTitle = GetForegroundWindowTitle();
             Show();
             Activate();
 
@@ -234,6 +239,7 @@ public partial class PopupWindow : Window
         try
         {
             await Dispatcher.Yield(DispatcherPriority.Input);
+            await Task.Delay(PasteTargetFocusDelayMs);
 
             if (DataContext is not PopupViewModel vm || _pendingPasteItem == null)
                 return;
@@ -243,8 +249,19 @@ public partial class PopupWindow : Window
 
             if (vm.CopyToClipboardFast(pasteItem))
             {
-                await Task.Delay(PasteTargetReadyDelayMs);
-                DoPaste();
+                if (IsJumpServerTextPaste(pasteItem))
+                {
+                    if (!DirectTextInput.TrySend(pasteItem.Text ?? string.Empty))
+                    {
+                        MessageBox.Show("向 JumpServer 输入文本失败，请稍后重试。",
+                            "ClipVault", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                }
+                else
+                {
+                    await Task.Delay(PasteClipboardSyncDelayMs);
+                    DoPaste();
+                }
             }
             else
             {
@@ -320,6 +337,27 @@ public partial class PopupWindow : Window
         User32.keybd_event(Win32Constants.VK_V, 0, 0, IntPtr.Zero);
         User32.keybd_event(Win32Constants.VK_V, 0, Win32Constants.KEYEVENTF_KEYUP, IntPtr.Zero);
         User32.keybd_event(Win32Constants.VK_CONTROL, 0, Win32Constants.KEYEVENTF_KEYUP, IntPtr.Zero);
+    }
+
+    private bool IsJumpServerTextPaste(ClipboardItem item)
+    {
+        bool isText = item.Type is ClipboardItemType.Text or ClipboardItemType.Rtf or ClipboardItemType.Html;
+        int textLength = item.Text?.Length ?? 0;
+        return isText
+            && textLength <= JumpServerDirectInputMaxLength
+            && _pasteTargetWindowTitle.Contains("JumpServer", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetForegroundWindowTitle()
+    {
+        IntPtr hwnd = User32.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return string.Empty;
+
+        int length = User32.GetWindowTextLength(hwnd);
+        if (length <= 0) return string.Empty;
+
+        var title = new StringBuilder(length + 1);
+        return User32.GetWindowText(hwnd, title, title.Capacity) > 0 ? title.ToString() : string.Empty;
     }
 
     /// <summary>
