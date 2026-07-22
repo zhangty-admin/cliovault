@@ -21,7 +21,8 @@ DisableProgramGroupPage=yes
 DisableDirPage=no
 OutputDir=installer_output
 OutputBaseFilename=ClipVaultSetup_v{#MyAppVersion}
-; SetupIconFile=src\ClipVault\Assets\app.ico   ; 如有 .ico 文件可取消注释
+; 安装程序与安装包 exe 的图标（与软件主图标一致）
+SetupIconFile=src\ClipVault\Assets\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -31,9 +32,6 @@ PrivilegesRequiredOverridesAllowed=dialog
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
-
-; 如果没有图标文件则移除上面这行，用下面的默认设置
-; SetupIconFile 不存在时会报错，先注释掉
 
 [Languages]
 Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ClipVault.Helpers;
 using ClipVault.Models;
 using ClipVault.Services;
@@ -221,17 +222,18 @@ public partial class App : Application
     {
         try
         {
+            // 使用内嵌的高清应用图标（玻璃拟态层叠卡片），替代旧的 emoji
+            var iconImage = new BitmapImage();
+            iconImage.BeginInit();
+            iconImage.UriSource = new Uri("pack://application:,,,/Assets/app.ico", UriKind.Absolute);
+            iconImage.CacheOption = BitmapCacheOption.OnLoad;
+            iconImage.EndInit();
+            iconImage.Freeze();
+
             _taskbarIcon = new TaskbarIcon
             {
                 ToolTipText = "ClipVault - 剪贴板管理工具",
-                IconSource = new GeneratedIconSource
-                {
-                    Text = "📋",
-                    Foreground = System.Windows.Media.Brushes.White,
-                    Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x4C, 0x6E, 0xF5)),
-                    FontSize = 38,
-                    FontWeight = FontWeights.Bold
-                }
+                IconSource = iconImage
             };
 
             // 右键菜单
