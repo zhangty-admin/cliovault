@@ -433,6 +433,44 @@ public class ClipboardStore
         }
     }
 
+    /// <summary>
+    /// 返回指定分组的当前显示顺序。
+    /// </summary>
+    public List<ClipboardItem> OrderItemsForTag(string tag, IEnumerable<ClipboardItem> items)
+    {
+        lock (_lock)
+        {
+            return items.ToList();
+        }
+    }
+
+    /// <summary>
+    /// 调整一个分组内记录的顺序，同时保留非该分组记录原有位置。
+    /// </summary>
+    public void ReorderGroupItems(string tag, IReadOnlyList<Guid> orderedItemIds)
+    {
+        lock (_lock)
+        {
+            var groupIndexes = _items
+                .Select((item, index) => (item, index))
+                .Where(x => x.item.Tags.Contains(tag))
+                .Select(x => x.index)
+                .ToList();
+            var groupItems = _items.Where(x => x.Tags.Contains(tag)).ToDictionary(x => x.Id);
+            var reordered = orderedItemIds
+                .Where(groupItems.ContainsKey)
+                .Distinct()
+                .Select(id => groupItems[id])
+                .ToList();
+            if (reordered.Count != groupIndexes.Count)
+                return;
+
+            for (var i = 0; i < groupIndexes.Count; i++)
+                _items[groupIndexes[i]] = reordered[i];
+            ScheduleSave();
+        }
+    }
+
     public void ToggleTag(Guid itemId, string tag)
     {
         var trimmed = tag.Trim();

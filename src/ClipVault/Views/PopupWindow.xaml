@@ -245,6 +245,7 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:ClipboardItem}">
                             <views:ClipboardItemCard
+                                IsGroupReorderEnabled="{Binding DataContext.CanReorderGroupItems, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                 ItemSelected="Card_ItemSelected"
                                 ItemDoubleClicked="Card_ItemDoubleClicked"
                                 PinToggled="Card_PinToggled"

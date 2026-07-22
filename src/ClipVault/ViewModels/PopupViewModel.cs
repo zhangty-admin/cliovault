@@ -40,6 +40,9 @@ public partial class PopupViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<string> Tags { get; } = new();
 
+    public bool CanReorderGroupItems => !string.IsNullOrEmpty(SelectedTag)
+        && string.IsNullOrWhiteSpace(SearchText);
+
     public ReadOnlyObservableCollection<RecycleBinEntry> RecycleBin => _store.RecycleBin;
 
     public int RecycleBinCount => _store.RecycleBin.Count;
@@ -77,11 +80,13 @@ public partial class PopupViewModel : ViewModelBase
 
     partial void OnSearchTextChanged(string value)
     {
+        OnPropertyChanged(nameof(CanReorderGroupItems));
         RefreshFilteredItems();
     }
 
     partial void OnSelectedTagChanged(string? value)
     {
+        OnPropertyChanged(nameof(CanReorderGroupItems));
         RefreshFilteredItems();
     }
 
@@ -159,6 +164,9 @@ public partial class PopupViewModel : ViewModelBase
                 desired.Add(item);
             }
         }
+
+        if (activeTag != null)
+            desired = _store.OrderItemsForTag(activeTag, desired);
 
         // 快速路径：如果数量和内容都没变，跳过
         if (desired.Count == FilteredItems.Count)
@@ -421,6 +429,25 @@ public partial class PopupViewModel : ViewModelBase
     public void ReorderTags()
     {
         _store.ReorderTags(Tags.ToList());
+    }
+
+    public void ReorderGroupItem(ClipboardItem draggedItem, ClipboardItem targetItem)
+    {
+        if (!CanReorderGroupItems || string.IsNullOrEmpty(SelectedTag) || ReferenceEquals(draggedItem, targetItem)
+            || draggedItem.IsPinned != targetItem.IsPinned)
+            return;
+
+        var fullGroup = _store.OrderItemsForTag(SelectedTag,
+            _store.Items.Where(x => x.Tags.Contains(SelectedTag)));
+        var fromIndex = fullGroup.FindIndex(x => x.Id == draggedItem.Id);
+        var targetIndex = fullGroup.FindIndex(x => x.Id == targetItem.Id);
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex == targetIndex)
+            return;
+
+        fullGroup.RemoveAt(fromIndex);
+        fullGroup.Insert(targetIndex, draggedItem);
+        _store.ReorderGroupItems(SelectedTag, fullGroup.Select(x => x.Id).ToList());
+        RefreshFilteredItems();
     }
 
     /// <summary>

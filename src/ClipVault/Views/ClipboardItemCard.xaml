@@ -3,6 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:ClipVault.Views"
              MouseDoubleClick="Card_DoubleClick"
+             AllowDrop="True"
+             DragOver="Card_DragOver"
+             Drop="Card_Drop"
              Width="250"
              Margin="5,0">
 
@@ -51,6 +54,18 @@
                             VerticalAlignment="Center"
                             Opacity="0"
                             x:Name="ActionPanel">
+
+                    <TextBlock x:Name="GroupDragHandle"
+                               Text="⠿"
+                               FontSize="18"
+                               Padding="4,1"
+                               Margin="0,0,4,0"
+                               Cursor="SizeWE"
+                               ToolTip="拖动调整当前分组内顺序"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               Visibility="{Binding IsGroupReorderEnabled, RelativeSource={RelativeSource AncestorType={x:Type local:ClipboardItemCard}}, Converter={StaticResource BoolToVis}}"
+                               PreviewMouseLeftButtonDown="GroupDragHandle_MouseLeftButtonDown"
+                               PreviewMouseMove="GroupDragHandle_MouseMove" />
 
                     <Button Style="{StaticResource CardActionButton}"
                             Click="Pin_Click"

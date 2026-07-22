@@ -30,6 +30,16 @@ public class TagToVisibilityConverter : IValueConverter
 /// </summary>
 public partial class ClipboardItemCard : UserControl
 {
+    private Point _groupDragStart;
+
+    public static readonly DependencyProperty IsGroupReorderEnabledProperty = DependencyProperty.Register(
+        nameof(IsGroupReorderEnabled), typeof(bool), typeof(ClipboardItemCard), new PropertyMetadata(false));
+
+    public bool IsGroupReorderEnabled
+    {
+        get => (bool)GetValue(IsGroupReorderEnabledProperty);
+        set => SetValue(IsGroupReorderEnabledProperty, value);
+    }
     public static readonly RoutedEvent ItemSelectedEvent = EventManager.RegisterRoutedEvent(
         nameof(ItemSelected), RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(ClipboardItemCard));
 
@@ -202,6 +212,47 @@ public partial class ClipboardItemCard : UserControl
         {
             vm.ApplyTag(item, tag);
         }
+    }
+
+    private void GroupDragHandle_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _groupDragStart = e.GetPosition(this);
+        e.Handled = true;
+    }
+
+    private void GroupDragHandle_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!IsGroupReorderEnabled || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed
+            || DataContext is not ClipboardItem item)
+            return;
+
+        var current = e.GetPosition(this);
+        if (Math.Abs(current.X - _groupDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(current.Y - _groupDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        e.Handled = true;
+        DragDrop.DoDragDrop(this, item, DragDropEffects.Move);
+    }
+
+    private void Card_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = IsGroupReorderEnabled && e.Data.GetDataPresent(typeof(ClipboardItem))
+            ? DragDropEffects.Move
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Card_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!IsGroupReorderEnabled
+            || e.Data.GetData(typeof(ClipboardItem)) is not ClipboardItem draggedItem
+            || DataContext is not ClipboardItem targetItem
+            || Window.GetWindow(this)?.DataContext is not PopupViewModel vm)
+            return;
+
+        vm.ReorderGroupItem(draggedItem, targetItem);
+        e.Handled = true;
     }
 
     private void ToggleTag(string tag)
