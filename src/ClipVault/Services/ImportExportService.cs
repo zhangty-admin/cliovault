@@ -19,19 +19,29 @@ public sealed class ImportExportService
             File.Delete(zipPath);
 
         using var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-        AddFileIfExists(archive, Path.Combine(PersistenceService.DataDirectory, "history.json"), "history.json");
-        AddFileIfExists(archive, Path.Combine(PersistenceService.DataDirectory, "settings.json"), "settings.json");
+        AddFileIfExists(archive, Path.Combine(_persistence.DataDirectoryPath, "history.json"), "history.json");
+        AddFileIfExists(archive, Path.Combine(_persistence.DataDirectoryPath, "settings.json"), "settings.json");
 
         for (var i = 1; i <= 5; i++)
-            AddFileIfExists(archive, Path.Combine(PersistenceService.DataDirectory, $"history.json.bak{i}"), $"history.json.bak{i}");
+            AddFileIfExists(archive, Path.Combine(_persistence.DataDirectoryPath, $"history.json.bak{i}"), $"history.json.bak{i}");
 
-        var imagesDir = PersistenceService.ImageDirectory;
+        var imagesDir = _persistence.ImageDirectoryPath;
         if (Directory.Exists(imagesDir))
         {
             foreach (var file in Directory.EnumerateFiles(imagesDir, "*", SearchOption.AllDirectories))
             {
                 var relative = Path.GetRelativePath(imagesDir, file).Replace('\\', '/');
                 archive.CreateEntryFromFile(file, $"images/{relative}", CompressionLevel.Optimal);
+            }
+        }
+
+        var contentsDir = _persistence.ContentDirectoryPath;
+        if (Directory.Exists(contentsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(contentsDir, "*", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(contentsDir, file).Replace('\\', '/');
+                archive.CreateEntryFromFile(file, $"contents/{relative}", CompressionLevel.Optimal);
             }
         }
     }
@@ -42,7 +52,8 @@ public sealed class ImportExportService
         return new ImportSummary(
             HasHistory: archive.GetEntry("history.json") != null,
             HasSettings: archive.GetEntry("settings.json") != null,
-            ImageCount: archive.Entries.Count(e => e.FullName.StartsWith("images/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(e.Name)));
+            ImageCount: archive.Entries.Count(e => e.FullName.StartsWith("images/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(e.Name)),
+            ContentCount: archive.Entries.Count(e => e.FullName.StartsWith("contents/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(e.Name)));
     }
 
     public void ImportFrom(string zipPath)
@@ -54,19 +65,31 @@ public sealed class ImportExportService
         BackupCurrentData();
 
         using var archive = ZipFile.OpenRead(zipPath);
-        Directory.CreateDirectory(PersistenceService.DataDirectory);
-        Directory.CreateDirectory(PersistenceService.ImageDirectory);
+        Directory.CreateDirectory(_persistence.DataDirectoryPath);
+        Directory.CreateDirectory(_persistence.ImageDirectoryPath);
+        Directory.CreateDirectory(_persistence.ContentDirectoryPath);
 
-        ExtractFileIfExists(archive, "history.json", Path.Combine(PersistenceService.DataDirectory, "history.json"));
-        ExtractFileIfExists(archive, "settings.json", Path.Combine(PersistenceService.DataDirectory, "settings.json"));
+        ExtractFileIfExists(archive, "history.json", Path.Combine(_persistence.DataDirectoryPath, "history.json"));
+        ExtractFileIfExists(archive, "settings.json", Path.Combine(_persistence.DataDirectoryPath, "settings.json"));
 
         for (var i = 1; i <= 5; i++)
-            ExtractFileIfExists(archive, $"history.json.bak{i}", Path.Combine(PersistenceService.DataDirectory, $"history.json.bak{i}"));
+            ExtractFileIfExists(archive, $"history.json.bak{i}", Path.Combine(_persistence.DataDirectoryPath, $"history.json.bak{i}"));
 
         foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("images/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(e.Name)))
         {
             var relative = entry.FullName["images/".Length..].Replace('/', Path.DirectorySeparatorChar);
-            var target = Path.Combine(PersistenceService.ImageDirectory, relative);
+            var target = Path.Combine(_persistence.ImageDirectoryPath, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            entry.ExtractToFile(target, overwrite: true);
+        }
+
+
+        foreach (var entry in archive.Entries.Where(e => e.FullName.StartsWith("contents/", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(e.Name)))
+        {
+            var relative = entry.FullName["contents/".Length..].Replace('/', Path.DirectorySeparatorChar);
+            var target = Path.GetFullPath(Path.Combine(_persistence.ContentDirectoryPath, relative));
+            if (!target.StartsWith(Path.GetFullPath(_persistence.ContentDirectoryPath) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("备份包包含非法的大文本路径");
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             entry.ExtractToFile(target, overwrite: true);
         }
@@ -74,7 +97,7 @@ public sealed class ImportExportService
 
     private void BackupCurrentData()
     {
-        var backupsDir = Path.Combine(PersistenceService.DataDirectory, "import-backups");
+        var backupsDir = Path.Combine(_persistence.DataDirectoryPath, "import-backups");
         var zipPath = Path.Combine(backupsDir, $"before-import-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
         ExportTo(zipPath);
     }
@@ -95,4 +118,4 @@ public sealed class ImportExportService
     }
 }
 
-public readonly record struct ImportSummary(bool HasHistory, bool HasSettings, int ImageCount);
+public readonly record struct ImportSummary(bool HasHistory, bool HasSettings, int ImageCount, int ContentCount);

@@ -199,7 +199,8 @@ public class ClipboardStore
             _saveTimer.Tick += (_, _) =>
             {
                 _saveTimer!.Stop();
-                _persistence!.Save(_items, _standaloneTags, _recycleBin);
+                var snapshot = _persistence!.CreateSnapshot(_items, _standaloneTags, _recycleBin);
+                _persistence.QueueSave(snapshot);
             };
         }
 
@@ -214,7 +215,8 @@ public class ClipboardStore
     {
         if (_persistence == null) return;
         _saveTimer?.Stop();
-        _persistence.Save(_items, _standaloneTags, _recycleBin);
+        var snapshot = _persistence.CreateSnapshot(_items, _standaloneTags, _recycleBin);
+        _persistence.Flush(snapshot);
     }
 
     /// <summary>
@@ -503,6 +505,7 @@ public class ClipboardStore
             if (item == null) return;
 
             item.Text = newText;
+            _persistence?.InvalidateText(itemId);
             ScheduleSave();
         }
     }

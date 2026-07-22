@@ -80,7 +80,7 @@ public partial class SettingsWindow : Window
         try
         {
             var summary = _viewModel.PreviewImport(dialog.FileName);
-            var message = $"备份内容：历史文件={BoolText(summary.HasHistory)}，设置={BoolText(summary.HasSettings)}，图片={summary.ImageCount} 张。\n\n" +
+            var message = $"备份内容：历史文件={BoolText(summary.HasHistory)}，设置={BoolText(summary.HasSettings)}，图片={summary.ImageCount} 张，大文本={summary.ContentCount} 条。\n\n" +
                           "导入会覆盖当前本地数据，导入前会自动备份当前数据。导入后请重启 ClipVault 让数据重新加载。是否继续？";
             if (MessageBox.Show(message, "确认导入", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
                 return;

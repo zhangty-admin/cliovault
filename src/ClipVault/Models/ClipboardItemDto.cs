@@ -12,6 +12,13 @@ public class ClipboardItemDto
     public string? Text { get; set; }
 
     /// <summary>
+    /// 大文本文件相对路径（相对于 contents 目录）。旧数据仍直接使用 Text。
+    /// </summary>
+    public string? ContentPath { get; set; }
+
+    public long? TextLengthBytes { get; set; }
+
+    /// <summary>
     /// 图片文件相对路径（相对于 images 目录）
     /// </summary>
     public string? ImagePath { get; set; }
@@ -37,7 +44,7 @@ public class ClipboardItemDto
 /// </summary>
 public class ClipboardHistoryData
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
 
     public List<ClipboardItemDto> Items { get; set; } = new();
 

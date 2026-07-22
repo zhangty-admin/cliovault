@@ -1,4 +1,6 @@
 using System.IO;
+using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Media.Imaging;
 using ClipVault.Models;
@@ -11,22 +13,42 @@ namespace ClipVault.Services;
 /// </summary>
 public class PersistenceService
 {
-    private static readonly string DataDir = Path.Combine(
+    private static readonly string DefaultDataDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "ClipVault");
-
-    private static readonly string ImagesDir = Path.Combine(DataDir, "images");
-    private static readonly string HistoryFile = Path.Combine(DataDir, "history.json");
+    private readonly string _dataDir;
+    private readonly string _imagesDir;
+    private readonly string _contentsDir;
+    private readonly string _historyFile;
+    private readonly ConcurrentDictionary<Guid, string> _knownContentPaths = new();
+    private readonly object _saveQueueLock = new();
+    private PersistenceSnapshot? _pendingSave;
+    private bool _saveWorkerRunning;
+    private const int LargeTextThresholdBytes = 256 * 1024;
     private const int BackupCount = 5;
 
     /// <summary>
     /// 图片存储目录（供 CleanupService 使用）
     /// </summary>
-    public static string ImageDirectory => ImagesDir;
+    public static string ImageDirectory => Path.Combine(DefaultDataDir, "images");
 
-    public static string DataDirectory => DataDir;
+    public static string ContentDirectory => Path.Combine(DefaultDataDir, "contents");
 
-    public static string HistoryFilePath => HistoryFile;
+    public static string DataDirectory => DefaultDataDir;
+
+    public static string HistoryFilePath => Path.Combine(DefaultDataDir, "history.json");
+
+    public string DataDirectoryPath => _dataDir;
+    public string ImageDirectoryPath => _imagesDir;
+    public string ContentDirectoryPath => _contentsDir;
+
+    public PersistenceService(string? dataDirectory = null)
+    {
+        _dataDir = dataDirectory ?? DefaultDataDir;
+        _imagesDir = Path.Combine(_dataDir, "images");
+        _contentsDir = Path.Combine(_dataDir, "contents");
+        _historyFile = Path.Combine(_dataDir, "history.json");
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -42,38 +64,109 @@ public class PersistenceService
         IEnumerable<string>? standaloneTags = null,
         IEnumerable<RecycleBinEntry>? recycleBin = null)
     {
+        Save(CreateSnapshot(items, standaloneTags, recycleBin));
+    }
+
+    public PersistenceSnapshot CreateSnapshot(
+        IEnumerable<ClipboardItem> items,
+        IEnumerable<string>? standaloneTags = null,
+        IEnumerable<RecycleBinEntry>? recycleBin = null)
+    {
+        return new PersistenceSnapshot(
+            items.Select(CloneItem).ToList(),
+            standaloneTags?.ToList() ?? new List<string>(),
+            recycleBin?.Select(x => new RecycleBinEntry
+            {
+                Item = CloneItem(x.Item),
+                DeletedAt = x.DeletedAt
+            }).ToList() ?? new List<RecycleBinEntry>());
+    }
+
+    /// <summary>
+    /// 后台单写入队列。新请求会替换尚未开始的旧请求，始终保存最新快照。
+    /// </summary>
+    public void QueueSave(PersistenceSnapshot snapshot)
+    {
+        lock (_saveQueueLock)
+        {
+            _pendingSave = snapshot;
+            if (_saveWorkerRunning)
+                return;
+
+            _saveWorkerRunning = true;
+            _ = Task.Run(ProcessSaveQueue);
+        }
+    }
+
+    public void Flush(PersistenceSnapshot snapshot)
+    {
+        QueueSave(snapshot);
+        lock (_saveQueueLock)
+        {
+            while (_saveWorkerRunning)
+                Monitor.Wait(_saveQueueLock);
+        }
+    }
+
+    public void InvalidateText(Guid itemId) => _knownContentPaths.TryRemove(itemId, out _);
+
+    private void ProcessSaveQueue()
+    {
+        while (true)
+        {
+            PersistenceSnapshot? snapshot;
+            lock (_saveQueueLock)
+            {
+                snapshot = _pendingSave;
+                _pendingSave = null;
+                if (snapshot == null)
+                {
+                    _saveWorkerRunning = false;
+                    Monitor.PulseAll(_saveQueueLock);
+                    return;
+                }
+            }
+
+            Save(snapshot);
+        }
+    }
+
+    private void Save(PersistenceSnapshot snapshot)
+    {
         try
         {
             EnsureDirectories();
 
             var data = new ClipboardHistoryData
             {
-                Items = items.Select(ToDto).ToList(),
-                Tags = standaloneTags?.ToList() ?? new List<string>(),
-                RecycleBin = recycleBin?.Select(x => new RecycleBinEntryDto
+                Items = snapshot.Items.Select(ToDto).ToList(),
+                Tags = snapshot.Tags,
+                RecycleBin = snapshot.RecycleBin.Select(x => new RecycleBinEntryDto
                 {
                     Item = ToDto(x.Item),
                     DeletedAt = x.DeletedAt
-                }).ToList() ?? new List<RecycleBinEntryDto>()
+                }).ToList()
             };
 
             // 写入临时文件再重命名，避免写入失败导致文件损坏
-            var tempFile = HistoryFile + ".tmp";
-            var json = JsonSerializer.Serialize(data, JsonOptions);
-            File.WriteAllText(tempFile, json);
-
-            if (File.Exists(HistoryFile))
+            var tempFile = _historyFile + ".tmp";
+            using (var stream = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                // 只轮转可正常解析的历史文件，避免用损坏文件覆盖有效快照。
-                if (TryDeserialize(HistoryFile, out _))
-                    RotateBackups();
-                File.Delete(HistoryFile);
+                JsonSerializer.Serialize(stream, data, JsonOptions);
+                stream.Flush(flushToDisk: true);
             }
-            File.Move(tempFile, HistoryFile);
+
+            if (File.Exists(_historyFile))
+            {
+                RotateBackups();
+                File.Delete(_historyFile);
+            }
+            File.Move(tempFile, _historyFile);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"保存失败: {ex.Message}");
+            Helpers.MessageWindow.Log($"[Persistence] Save failed: {ex}");
         }
     }
 
@@ -88,7 +181,7 @@ public class PersistenceService
 
     public (List<ClipboardItem> items, List<string> tags, List<RecycleBinEntry> recycleBin) LoadAll()
     {
-        var candidates = new[] { HistoryFile }
+        var candidates = new[] { _historyFile }
             .Concat(Enumerable.Range(1, BackupCount).Select(BackupPath));
 
         foreach (var candidate in candidates)
@@ -113,7 +206,7 @@ public class PersistenceService
                     recycleBin.Add(new RecycleBinEntry { Item = item, DeletedAt = dto.DeletedAt });
             }
 
-            if (!string.Equals(candidate, HistoryFile, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(candidate, _historyFile, StringComparison.OrdinalIgnoreCase))
             {
                 Helpers.MessageWindow.Log($"[Persistence] Recovered history from {Path.GetFileName(candidate)}");
             }
@@ -130,7 +223,8 @@ public class PersistenceService
         try
         {
             if (!File.Exists(path)) return false;
-            data = JsonSerializer.Deserialize<ClipboardHistoryData>(File.ReadAllText(path), JsonOptions);
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            data = JsonSerializer.Deserialize<ClipboardHistoryData>(stream, JsonOptions);
             return data != null;
         }
         catch (Exception ex)
@@ -140,9 +234,9 @@ public class PersistenceService
         }
     }
 
-    private static string BackupPath(int index) => $"{HistoryFile}.bak{index}";
+    private string BackupPath(int index) => $"{_historyFile}.bak{index}";
 
-    private static void RotateBackups()
+    private void RotateBackups()
     {
         var oldest = BackupPath(BackupCount);
         if (File.Exists(oldest)) File.Delete(oldest);
@@ -153,7 +247,7 @@ public class PersistenceService
             if (File.Exists(source)) File.Move(source, BackupPath(i + 1));
         }
 
-        File.Copy(HistoryFile, BackupPath(1), overwrite: true);
+        File.Copy(_historyFile, BackupPath(1), overwrite: true);
     }
 
     /// <summary>
@@ -173,6 +267,13 @@ public class PersistenceService
             Tags = item.Tags.ToList(),
             SmartType = item.SmartType
         };
+
+        if (ShouldStoreExternally(item.Text))
+        {
+            dto.ContentPath = SaveTextContent(item.Id, item.Text!);
+            dto.TextLengthBytes = Encoding.UTF8.GetByteCount(item.Text!);
+            dto.Text = null;
+        }
 
         // 任何类型只要有 Image 就保存为 PNG（支持 Image/Rtf/Html/Files 带图片预览）
         if (item.Image != null)
@@ -194,7 +295,7 @@ public class PersistenceService
         // 统一加载图片：从 ImagePath 加载（适用于所有类型）
         if (!string.IsNullOrEmpty(dto.ImagePath))
         {
-            var fullPath = Path.Combine(ImagesDir, dto.ImagePath);
+            var fullPath = Path.Combine(_imagesDir, dto.ImagePath);
             if (File.Exists(fullPath))
             {
                 try
@@ -252,11 +353,12 @@ public class PersistenceService
             catch { }
         }
 
+        var text = LoadTextContent(dto);
         var item = new ClipboardItem
         {
             Id = dto.Id,
             Type = actualType,
-            Text = dto.Text,
+            Text = text,
             FilePaths = dto.FilePaths?.ToList().AsReadOnly(),
             CapturedAt = dto.CapturedAt,
             IsPinned = dto.IsPinned,
@@ -276,7 +378,7 @@ public class PersistenceService
         EnsureDirectories();
 
         var fileName = $"{id:N}.png";
-        var filePath = Path.Combine(ImagesDir, fileName);
+        var filePath = Path.Combine(_imagesDir, fileName);
 
         if (!File.Exists(filePath))
         {
@@ -291,10 +393,74 @@ public class PersistenceService
 
     private void EnsureDirectories()
     {
-        if (!Directory.Exists(DataDir))
-            Directory.CreateDirectory(DataDir);
-        if (!Directory.Exists(ImagesDir))
-            Directory.CreateDirectory(ImagesDir);
+        Directory.CreateDirectory(_dataDir);
+        Directory.CreateDirectory(_imagesDir);
+        Directory.CreateDirectory(_contentsDir);
+    }
+
+    private static ClipboardItem CloneItem(ClipboardItem item) => new()
+    {
+        Id = item.Id,
+        Type = item.Type,
+        Text = item.Text,
+        Image = item.Image,
+        FilePaths = item.FilePaths?.ToList().AsReadOnly(),
+        CapturedAt = item.CapturedAt,
+        IsPinned = item.IsPinned,
+        Tags = item.Tags.ToList(),
+        SmartType = item.SmartType
+    };
+
+    private static bool ShouldStoreExternally(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length < LargeTextThresholdBytes / 3)
+            return false;
+        return Encoding.UTF8.GetByteCount(text) >= LargeTextThresholdBytes;
+    }
+
+    private string SaveTextContent(Guid id, string text)
+    {
+        if (_knownContentPaths.TryGetValue(id, out var knownPath)
+            && File.Exists(Path.Combine(_contentsDir, knownPath)))
+            return knownPath;
+
+        EnsureDirectories();
+        // 编辑后的内容使用新版本文件名，避免覆盖仍被 history.json.bak* 引用的旧内容。
+        var fileName = $"{id:N}-{DateTime.UtcNow.Ticks}.txt";
+        var target = Path.Combine(_contentsDir, fileName);
+        var temp = target + ".tmp";
+        File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.Move(temp, target, overwrite: true);
+        _knownContentPaths[id] = fileName;
+        return fileName;
+    }
+
+    private string? LoadTextContent(ClipboardItemDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.ContentPath))
+            return dto.Text;
+
+        try
+        {
+            var fullPath = ResolveContentPath(dto.ContentPath);
+            var text = File.ReadAllText(fullPath, Encoding.UTF8);
+            _knownContentPaths[dto.Id] = dto.ContentPath;
+            return text;
+        }
+        catch (Exception ex)
+        {
+            Helpers.MessageWindow.Log($"[Persistence] Cannot load content {dto.ContentPath}: {ex.Message}");
+            return dto.Text;
+        }
+    }
+
+    private string ResolveContentPath(string relativePath)
+    {
+        var root = Path.GetFullPath(_contentsDir) + Path.DirectorySeparatorChar;
+        var fullPath = Path.GetFullPath(Path.Combine(_contentsDir, relativePath));
+        if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("历史记录包含非法的大文本路径");
+        return fullPath;
     }
 
     private static List<string> MergeTags(IEnumerable<string>? tags, string? legacyTag)
@@ -319,10 +485,12 @@ public class PersistenceService
     {
         try
         {
-            if (File.Exists(HistoryFile))
-                File.Delete(HistoryFile);
-            if (Directory.Exists(ImagesDir))
-                Directory.Delete(ImagesDir, true);
+            if (File.Exists(_historyFile))
+                File.Delete(_historyFile);
+            if (Directory.Exists(_imagesDir))
+                Directory.Delete(_imagesDir, true);
+            if (Directory.Exists(_contentsDir))
+                Directory.Delete(_contentsDir, true);
         }
         catch { }
     }
@@ -337,10 +505,10 @@ public class PersistenceService
         var removed = 0;
         try
         {
-            if (!Directory.Exists(ImagesDir))
+            if (!Directory.Exists(_imagesDir))
                 return 0;
 
-            foreach (var file in Directory.EnumerateFiles(ImagesDir, "*.png"))
+            foreach (var file in Directory.EnumerateFiles(_imagesDir, "*.png"))
             {
                 var fileName = Path.GetFileName(file);
                 if (!validImagePaths.Contains(fileName))
@@ -354,3 +522,8 @@ public class PersistenceService
         return removed;
     }
 }
+
+public sealed record PersistenceSnapshot(
+    List<ClipboardItem> Items,
+    List<string> Tags,
+    List<RecycleBinEntry> RecycleBin);
